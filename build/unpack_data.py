@@ -2,7 +2,7 @@ import os
 import pandas as pd
 
 
-def unpack_data(input_dir, output_file):
+def unpack_data(input_dir, output_file="data/bronze/combined_data.csv"):
     """
     Exercice : Fonction pour décompresser et combiner plusieurs fichiers CSV à partir d'un répertoire en un seul fichier CSV.
 
@@ -30,7 +30,31 @@ def unpack_data(input_dir, output_file):
     - Sauvegardez le résultat avec `to_csv`.
     """
 
-    pass
+    all_dataframes = []
+    
+    # On parcourt tous les dossiers (on part du principe qu'ils sont tous ok pour être chargés)
+    for root, _, files in os.walk(input_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            
+            try:
+                # On sait que c'est des CSV malgré les extensions
+                df = pd.read_csv(file_path, header=0)
+                all_dataframes.append(df)
+                print(f"Loaded file: {file_path}")
+            except Exception as e:
+                print(f"Error loading file {file_path}: {e}")
+    
+
+    if all_dataframes:
+        merged_df = pd.concat(all_dataframes, ignore_index=True)
+        merged_file_path = os.path.join(output_file)
+        
+        merged_df.to_csv(merged_file_path, index=False)
+        print(f"Merged file saved at: {merged_file_path}")
+    else:
+        print("No files to merge.")
+
 
 
 

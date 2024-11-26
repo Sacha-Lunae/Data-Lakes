@@ -5,6 +5,9 @@ import numpy as np
 import tqdm
 import joblib
 from collections import OrderedDict
+from sklearn.utils.class_weight import compute_class_weight
+import json
+from collections import defaultdict
 
 
 def preprocess_data(data_file, output_dir):
@@ -40,26 +43,69 @@ def preprocess_data(data_file, output_dir):
     - Assurez que les données très déséquilibrées sont bien réparties dans les ensembles.
     - Générez des fichiers supplémentaires comme un mapping des classes et les poids de classes.
     """
-    # Importez les modules nécessaires : pandas, numpy, LabelEncoder, train_test_split
-    import pandas as pd
-    import numpy as np
-    from sklearn.preprocessing import LabelEncoder
-    from sklearn.model_selection import train_test_split
 
     # Étape 1 : Chargez les données brutes avec pd.read_csv
+    df = pd.read_csv(data_file)
 
     # Étape 2 : Supprimez les valeurs manquantes avec dropna
+    df = df.dropna(how="all", axis=1)
+    df = df.dropna(how="all", axis=0)
 
-    # Étape 3 : Encodez la colonne 'family_accession' en labels numériques avec LabelEncoder
+    train = []
+    val = []
+    test = []
 
-    # Étape 4 : Divisez les indices des données en ensembles d'entraînement, validation et test
-    # Utilisez la stratégie donnée dans les étapes
+    # Étape 3 : Grouper les données par famille et appliquer les règles
+    le = LabelEncoder()
+    df['encoded_family'] = le.fit_transform(df["family_accession"])
 
-    # Étape 5 : Créez des DataFrames pour chaque ensemble et sauvegardez-les en fichiers CSV
+    family_groups = df.groupby('encoded_family')
+
+    for family, group in family_groups:
+        group = group.sample(frac=1, random_state=42)  # Mélanger les données pour éviter les biais
+        n = len(group)
+        
+        if n == 1:
+            # Une seule observation : dans test
+            test.append(group)
+        elif n == 2:
+            # Deux observations : une dans test, une dans val
+            test.append(group.iloc[:1])
+            val.append(group.iloc[1:])
+        else:
+            # Trois ou plus : une dans chaque
+            test.append(group.iloc[:1])
+            val.append(group.iloc[1:2])
+            train.append(group.iloc[2:])
+
+    # Étape 4 : Concaténer les données pour chaque ensemble
+    train_df = pd.concat(train).reset_index(drop=True)
+    val_df = pd.concat(val).reset_index(drop=True)
+    test_df = pd.concat(test).reset_index(drop=True)
+
+    # Étape 5 : Sauvegarder les ensembles
+    train_df.to_csv(f"{output_dir}/train_data.csv", index=False)
+    val_df.to_csv(f"{output_dir}/val_data.csv", index=False)
+    test_df.to_csv(f"{output_dir}/test_data.csv", index=False)
+
+    print(f"Train size: {len(train_df)}, Validation size: {len(val_df)}, Test size: {len(test_df)}")
 
     # Étape 6 : Calculez les poids de classes pour équilibrer les données
     # Sauvegardez les poids de classes dans un fichier texte
-    pass
+    classes = np.unique(df['encoded_family'])
+    weights = compute_class_weight(
+        class_weight='balanced', 
+        classes=classes, 
+        y=df['encoded_family']
+    )
+
+    # Convertir les poids en dictionnaire pour faciliter la sauvegarde
+    class_weights = dict(zip(classes, weights))
+
+    # Sauvegarder les poids dans un fichier texte
+    output_file = f"{output_dir}/class_weights.json"
+    with open(output_file, "w") as f:
+        json.dump(class_weights, f)
 
 
 
